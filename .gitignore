@@ -1,0 +1,19 @@
+# D
+.dub
+docs.json
+__dummy.html
+*.o
+*.obj
+__test__*__
+*.a
+
+# Build Artifacts
+build/
+coverage/
+
+# Trial
+.trial/
+trial-result.*
+trial-stats.*
+trial_root.d
+generated.d

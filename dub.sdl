@@ -1,0 +1,24 @@
+name "supervised"
+description "A process control system."
+authors "Benjamin Schaaf"
+copyright "Copyright © 2017, Benjamin Schaaf"
+license "MIT"
+
+targetPath "build"
+
+dependency "vibe-d:core" version="~>0.8.2"
+
+# Library
+configuration "library" {
+}
+
+# Testing
+configuration "trial" {
+    importPaths "source" "tests"
+    sourcePaths "source" "tests"
+
+    dependency "trial:lifecycle" version="~>0.5.3"
+    dependency "fluent-asserts" version="~>0.8.5"
+
+    buildOptions "releaseMode" "debugInfo" "alwaysStackFrame"
+}

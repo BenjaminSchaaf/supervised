@@ -1,0 +1,11 @@
+d:
+  - dmd
+  - gdc
+  - llc
+
+install:
+  dub fetch doveralls
+  dub fetch trial --version=0.5.3
+
+script:
+  dub run trial:runner -- --coverage --combined
