@@ -1,7 +1,8 @@
+language: d
 d:
   - dmd
-  - gdc
-  - llc
+  # - gdc
+  # - llc
 
 install:
   dub fetch doveralls
