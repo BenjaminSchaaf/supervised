@@ -204,6 +204,7 @@ shared class ProcessMonitor {
                 }
             }
             runWorkerTask(&fn, this, thisTid, args.idup, env.idup, workingDir);
+
             self.watcher = receiveOnly!Task;
 
             logger.tracef("Process started, monitor: %s", self.watcher);
@@ -274,7 +275,7 @@ shared class ProcessMonitor {
         auto stdoutThread = new Thread({
             readBarrier.wait();
             foreach (line; stdout.byLineCopy()) {
-                //logger.tracef("Watcher(%s) STDOUT >> %s", thisTask, line);
+                logger.tracef("Watcher(%s) STDOUT >> %s", thisTask, line);
                 callStdoutCallback(line);
             }
             logger.tracef("Watcher(%s) STDOUT: Thread completed", thisTask);
@@ -284,7 +285,7 @@ shared class ProcessMonitor {
         auto stderrThread = new Thread({
             readBarrier.wait();
             foreach (line; stderr.byLineCopy()) {
-                //logger.tracef("Watcher(%s) STDERR >> %s", thisTask, line);
+                logger.tracef("Watcher(%s) STDERR >> %s", thisTask, line);
                 callStderrCallback(line);
             }
             logger.tracef("Watcher(%s) STDERR: Thread completed", thisTask);
@@ -317,14 +318,9 @@ shared class ProcessMonitor {
                 receiveCompat(
                     // Send
                     (string message) {
-                        if (message is null && stdin.isOpen) {
-                            logger.tracef("Watcher(%s): Closing stdin", thisTask);
-                            stdin.close();
-                        } else if (stdin.isOpen) {
-                            logger.tracef("Watcher(%s): Sending message: %s", thisTask, message);
-                            stdin.writeln(message);
-                            stdin.flush();
-                        }
+                        logger.tracef("Watcher(%s): Sending message: %s", thisTask, message);
+                        stdin.writeln(message);
+                        stdin.flush();
                     },
                     // Kill
                     (int signal) {
