@@ -146,22 +146,40 @@ shared class ProcessMonitor {
         withLock((self) @safe => self.terminateCallback = fn);
     }
 
-    void callStdoutCallback(string message) shared {
+    void callStdoutCallback(string message) shared @trusted {
         auto callback = _stdoutCallback;
 
-        if (callback !is null)  callback(message);
+        if (callback !is null) {
+            try {
+                callback(message);
+            } catch (Throwable e) {
+                logger.errorf("Stdout Callback Task(%s) Error: %s\nDue to line: %s", Task.getThis(), e, message);
+            }
+        }
     }
 
-    void callStderrCallback(string message) shared {
+    void callStderrCallback(string message) shared @trusted {
         auto callback = _stderrCallback;
 
-        if (callback !is null) callback(message);
+        if (callback !is null) {
+            try {
+                callback(message);
+            } catch (Throwable e) {
+                logger.errorf("Stderr Callback Task(%s) Error: %s\nDue to line: %s", Task.getThis(), e, message);
+            }
+        }
     }
 
-    void callTerminateCallback() shared {
+    void callTerminateCallback() shared @trusted {
         auto callback = _terminateCallback;
 
-        if (callback !is null) callback();
+        if (callback !is null) {
+            try {
+                callback();
+            } catch (Throwable e) {
+                logger.errorf("Terminate Callback Task(%s) Error: %s", Task.getThis(), e);
+            }
+        }
     }
 
     void send(string message) shared {
