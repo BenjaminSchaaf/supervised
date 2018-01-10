@@ -5,35 +5,6 @@
         "stats",
         "html"
     ],
-	"glyphs": {
-		"landing": {
-			"margin": "━",
-			"lane": "⋅",
-			"plane": "✈"
-		},
-		"result": {
-			"error": "✖"
-		},
-		"progress": {
-			"empty": "░",
-			"fill": "▓"
-		},
-		"specSteps": {
-			"testEnd": "└",
-			"step": "│",
-			"testBegin": "┌"
-		},
-		"dotMatrix": {
-			"success": ".",
-			"failure": "!",
-			"unknown": "?",
-			"pending": "-"
-		},
-		"spec": {
-			"ok": "✓",
-			"pending": "-"
-		}
-	},
 	"testDiscovery": [
 		"trial.discovery.spec.SpecTestDiscovery"
 	],
