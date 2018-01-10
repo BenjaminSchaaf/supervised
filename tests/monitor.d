@@ -56,7 +56,7 @@ private alias suite = Spec!({
                 monitor.send(input);
             }
 
-            monitor.send(null);
+            monitor.closeStdin();
             monitor.wait();
 
             outputs.should.equal(inputs);
@@ -80,7 +80,7 @@ private alias suite = Spec!({
                 monitor.send(input);
             }
 
-            monitor.send(null);
+            monitor.closeStdin();
             monitor.wait();
 
             outputs.should.equal(inputs);

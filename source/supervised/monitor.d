@@ -19,6 +19,9 @@ import vibe.core.concurrency;
 
 import supervised.logging;
 
+private enum CloseStdin { init };
+private enum ProcessTerminated { init };
+
 shared class ProcessMonitor {
     @safe:
 
@@ -36,6 +39,7 @@ shared class ProcessMonitor {
 
         Duration _killTimeout = 20.seconds;
 
+        Pid _pid;
         FileCallback _stdoutCallback;
         FileCallback _stderrCallback;
         EventCallback _terminateCallback;
@@ -97,6 +101,14 @@ shared class ProcessMonitor {
             instance._killTimeout = timeout;
         }
 
+        @property Pid pid() @trusted {
+            return cast(Pid)instance._pid;
+        }
+
+        package @property void pid(Pid pid) @trusted {
+            instance._pid = cast(shared)pid;
+        }
+
         @property void stdoutCallback(FileCallback fn) {
             instance._stdoutCallback = fn;
         }
@@ -132,6 +144,10 @@ shared class ProcessMonitor {
 
     @property void killTimeout(Duration duration) shared {
         withLock((self) @safe => self.killTimeout = duration);
+    }
+
+    @property Pid pid() shared {
+        return withLock((self) @safe => self.pid);
     }
 
     @property void stdoutCallback(FileCallback fn) {
@@ -186,6 +202,10 @@ shared class ProcessMonitor {
         withLock((self) @safe => self.send(message));
     }
 
+    void closeStdin() shared {
+        withLock((self) @trusted => self.watcher.sendCompat(CloseStdin.init));
+    }
+
     void start(immutable(string[]) args, immutable(Tuple!(string, string)[]) env = null, string workingDir = null) shared {
         withLock((self) @trusted {
             enforce(!self.running);
@@ -205,7 +225,9 @@ shared class ProcessMonitor {
             }
             runWorkerTask(&fn, this, thisTid, args.idup, env.idup, workingDir);
 
-            self.watcher = receiveOnly!Task;
+            auto received = receiveOnly!(Task, shared Pid);
+            self.watcher = received[0];
+            self.pid = cast(Pid)received[1];
 
             logger.tracef("Process started, monitor: %s", self.watcher);
 
@@ -259,7 +281,7 @@ shared class ProcessMonitor {
         auto killTimeout = cast(immutable)_killTimeout;
 
         // Notify the task that started the watcher that the watcher has started
-        starter.send(thisTask);
+        starter.send(thisTask, cast(shared)process);
 
         // Make sure we clean up after the watcher exits
         scope(exit) {
@@ -299,7 +321,7 @@ shared class ProcessMonitor {
         auto waitThread = new Thread({
             process.wait();
             logger.tracef("Watcher(%s) WAIT: Process terminated, notifying watcher", thisTask);
-            thisTask.prioritySendCompat(true);
+            thisTask.prioritySendCompat(ProcessTerminated.init);
         }).start();
         scope(exit) waitThread.join();
         waitThread.isDaemon = true;
@@ -339,8 +361,12 @@ shared class ProcessMonitor {
                             });
                         }
                     },
+                    (CloseStdin _) {
+                        logger.tracef("Watcher(%s): Closing stdin", thisTask);
+                        stdin.close();
+                    },
                     // Process terminated
-                    (bool _) {
+                    (ProcessTerminated _) {
                         logger.tracef("Watcher(%s): Process terminated", thisTask);
                         running = false;
                     }
