@@ -55,7 +55,12 @@ shared class ProcessMonitor {
     }
 
     ~this() shared {
-        if (running) kill();
+        withLock((self) @trusted {
+            if (!self.running) return;
+
+            logger.tracef("Killing process with SIGKILL due to monitor %s deallocation", self.watcher);
+            self.watcher.prioritySendCompat(SIGKILL);
+        });
     }
 
     private struct Sync {
