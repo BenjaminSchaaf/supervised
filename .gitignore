@@ -10,6 +10,7 @@ __test__*__
 # Build Artifacts
 build/
 coverage/
+dub.selections.json
 
 # Trial
 .trial/
