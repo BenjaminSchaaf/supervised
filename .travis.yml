@@ -13,7 +13,7 @@ addons:
 
 install:
   - dub fetch doveralls
-  - dub fetch trial --version=0.5.3
+  - dub fetch trial --version=0.6.1
 
 script:
   - dub run trial:runner -- :tests
