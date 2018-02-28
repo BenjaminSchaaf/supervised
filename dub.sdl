@@ -8,17 +8,8 @@ targetPath "build"
 
 dependency "vibe-d:core" version="~>0.8.2"
 
+subPackage "tests"
+
 # Library
 configuration "library" {
-}
-
-# Testing
-configuration "trial" {
-    importPaths "source" "tests"
-    sourcePaths "source" "tests"
-
-    dependency "trial:lifecycle" version="~>0.5.3"
-    dependency "fluent-asserts" version="~>0.8.5"
-
-    buildOptions "releaseMode" "debugInfo" "alwaysStackFrame"
 }

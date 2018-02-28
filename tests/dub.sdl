@@ -1,0 +1,14 @@
+name "tests"
+
+importPaths "."
+sourcePaths "."
+
+targetPath "../build"
+workingDirectory "../"
+
+dependency "supervised" path="../" version="*"
+
+dependency "trial:lifecycle" version="~>0.6.1"
+dependency "fluent-asserts" version="~>0.9.0"
+
+buildOptions "releaseMode" "debugInfo" "alwaysStackFrame"
