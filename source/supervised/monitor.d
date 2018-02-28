@@ -129,12 +129,18 @@ shared class ProcessMonitor {
         void send(string message) @trusted {
             enforce(running);
 
+            logger.tracef("Sending stdin message: %s", message);
             watcher.sendCompat(message);
         }
     }
 
     auto withLock(T)(T delegate(Sync) @safe fn) shared @trusted {
+        logger.trace("Locking mutex");
+        scope(exit) logger.trace("Unlocked mutex");
+
         synchronized (_mutex) {
+            logger.trace("Aquired mutex lock");
+
             return fn(Sync(cast(ProcessMonitor)this));
         }
     }
@@ -208,7 +214,10 @@ shared class ProcessMonitor {
     }
 
     void closeStdin() shared {
-        withLock((self) @trusted => self.watcher.sendCompat(CloseStdin.init));
+        withLock((self) @trusted {
+            logger.tracef("Sending closeStdin message");
+            self.watcher.sendCompat(CloseStdin.init);
+        });
     }
 
     void start(immutable(string[]) args, immutable(Tuple!(string, string)[]) env = null, string workingDir = null) shared {
@@ -266,7 +275,7 @@ shared class ProcessMonitor {
 
     private void runWatcher(Tid starter, immutable string[] args, string[string] env, string workingDir) shared @trusted {
         auto thisTask = Task.getThis();
-        logger.tracef("Watcher(%s): started with %s", thisTask, args);
+        logger.infof("Watcher(%s): started with %s", thisTask, args);
 
         // Start the process
         auto config = Config.newEnv;
@@ -275,7 +284,7 @@ shared class ProcessMonitor {
         auto stdin = processPipes.stdin;
         auto stdout = processPipes.stdout;
         auto stderr = processPipes.stderr;
-        logger.tracef("Watcher(%s): [stdin: , stdout: %s, stderr: %s]", stdin.fileno, stdout.fileno, stderr.fileno);
+        logger.tracef("Watcher(%s): [stdin: %s, stdout: %s, stderr: %s]", thisTask, stdin.fileno, stdout.fileno, stderr.fileno);
 
         // The monitor is locked by our starter, lets sneek in some state
         auto runningMutex = new TaskMutex;
@@ -286,6 +295,7 @@ shared class ProcessMonitor {
         auto killTimeout = cast(immutable)_killTimeout;
 
         // Notify the task that started the watcher that the watcher has started
+        logger.tracef("Watcher(%s): Notifying starter that process has started", thisTask);
         starter.send(thisTask, cast(shared)process);
 
         // Make sure we clean up after the watcher exits
@@ -325,17 +335,15 @@ shared class ProcessMonitor {
         // Start thread for waiting on the process to finish
         auto waitThread = new Thread({
             process.wait();
+            Thread.sleep(50.msecs); // Wait for stderr and stdout to be fully processed.
             logger.tracef("Watcher(%s) WAIT: Process terminated, notifying watcher", thisTask);
             thisTask.prioritySendCompat(ProcessTerminated.init);
         }).start();
         scope(exit) waitThread.join();
         waitThread.isDaemon = true;
 
-        Timer killTimer;
-        scope(exit) if (killTimer) killTimer.stop();
-
         // Keep a timer for catching zombies
-        Nullable!MonoTime killTime;
+        Timer killTimer;
 
         bool running = true;
         while (running) {
@@ -383,6 +391,9 @@ shared class ProcessMonitor {
             }
         }
 
+        // Stop the timer if its started.
+        if (killTimer) killTimer.stop();
+
         // Close all open pipes
         logger.tracef("Watcher(%s): Closing all pipes", thisTask);
         foreach (file; [stdout, stderr, stdin]) {
@@ -396,7 +407,7 @@ shared class ProcessMonitor {
         } catch (Throwable e) {}
         process.wait();
 
-        logger.tracef("Watcher(%s): stopped", thisTask);
+        logger.infof("Watcher(%s): stopped", thisTask);
     }
 
     /// Called by watcher thread when the process has terminated
@@ -411,6 +422,7 @@ shared class ProcessMonitor {
             self.runningMutex = null;
         });
 
+        logger.trace("Calling process termination callback");
         callTerminateCallback();
     }
 }

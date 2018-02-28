@@ -20,7 +20,7 @@ describe("ProcessMonitor", {
         auto monitor = new shared ProcessMonitor;
 
         foreach (i; 0..200) {
-            monitor.running.should.equal(false);
+            monitor.running.should.equal(false).because("(At iteration %s)".format(i));
 
             auto count = 0;
             auto others = 0;
@@ -30,8 +30,10 @@ describe("ProcessMonitor", {
             };
 
             monitor.start(["echo", "foo bar"]);
-            monitor.running.should.equal(true);
-            monitor.wait();
+            monitor.running.should.equal(true).because("(At iteration %s)".format(i));
+            monitor.wait().should.equal(0).because("(At iteration %s)".format(i));
+
+            auto large = new int[10000];
 
             count.should.equal(1).because("(At iteration %s)".format(i));
             others.should.equal(0).because("(At iteration %s)".format(i));
@@ -161,6 +163,12 @@ describe("ProcessMonitor", {
 
         outputs.should.equal(["foo", "INTERRUPTED"]);
     });
+
+    //it("handles running a non-existant process", {
+    //    auto monitor = new shared ProcessMonitor;
+
+    //    monitor.start(["tests/supports/this-file-does-not-exist"]);
+    //});
 
     // TODO: Support this feature
     /*it("handles processes that write directly to tty", {

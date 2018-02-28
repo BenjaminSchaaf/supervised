@@ -8,8 +8,29 @@ targetPath "build"
 
 dependency "vibe-d:core" version="~>0.8.2"
 
-subPackage "tests"
+# Purpousfully exclude this sub-package from supervised'd dependencies
+subPackage {
+    name "tests"
+
+    importPaths "tests"
+    sourcePaths "tests"
+
+    targetPath "build"
+    workingDirectory "." # Otherwise dub runs tests in tests directory
+
+    dependency "supervised" path="." version="*"
+    subConfiguration "supervised" "debug"
+
+    dependency "trial:lifecycle" version="~>0.6.1"
+    dependency "fluent-asserts" version="~>0.9.0"
+
+    buildOptions "debugInfo" "alwaysStackFrame"
+}
 
 # Library
 configuration "library" {
+}
+
+configuration "debug" {
+    debugVersions "supervised_debug"
 }
