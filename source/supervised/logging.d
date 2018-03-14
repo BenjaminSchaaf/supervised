@@ -6,9 +6,7 @@ import std.experimental.logger;
 private __gshared Logger _logger;
 
 shared static this() {
-    debug(supervised_debug) {
-        auto loglevel = LogLevel.trace;
-    } else debug {
+    debug {
         auto loglevel = LogLevel.info;
     } else {
         auto loglevel = LogLevel.info;

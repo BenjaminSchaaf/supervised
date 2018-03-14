@@ -54,13 +54,13 @@ shared class ProcessMonitor {
         start(args, env, workingDir);
     }
 
-    ~this() shared {
-        withLock((self) @trusted {
-            if (!self.running) return;
+    ~this() shared @trusted {
+        auto running = _running;
+        Task watcher = _watcher;
+        if (!running || !watcher) return;
 
-            logger.tracef("Killing process with SIGKILL due to monitor %s deallocation", self.watcher);
-            self.watcher.prioritySendCompat(SIGKILL);
-        });
+        logger.tracef("Killing process with SIGKILL due to monitor %s deallocation", watcher);
+        watcher.send(SIGKILL);
     }
 
     private struct Sync {
@@ -130,7 +130,7 @@ shared class ProcessMonitor {
             enforce(running);
 
             logger.tracef("Sending stdin message: %s", message);
-            watcher.sendCompat(message);
+            watcher.send(message);
         }
     }
 
@@ -216,7 +216,7 @@ shared class ProcessMonitor {
     void closeStdin() shared {
         withLock((self) @trusted {
             logger.tracef("Sending closeStdin message");
-            self.watcher.sendCompat(CloseStdin.init);
+            self.watcher.send(CloseStdin.init);
         });
     }
 
@@ -254,7 +254,7 @@ shared class ProcessMonitor {
             enforce(self.running);
 
             logger.tracef("Killing process with signal %s, monitor: %s", signal, self.watcher);
-            self.watcher.prioritySendCompat(signal);
+            self.watcher.send(signal);
         });
     }
 
@@ -337,7 +337,7 @@ shared class ProcessMonitor {
             process.wait();
             Thread.sleep(50.msecs); // Wait for stderr and stdout to be fully processed.
             logger.tracef("Watcher(%s) WAIT: Process terminated, notifying watcher", thisTask);
-            thisTask.prioritySendCompat(ProcessTerminated.init);
+            thisTask.send(ProcessTerminated.init);
         }).start();
         scope(exit) waitThread.join();
         waitThread.isDaemon = true;
@@ -350,7 +350,7 @@ shared class ProcessMonitor {
             // Handle messages
             try {
                 logger.tracef("Watcher(%s): polling...", thisTask);
-                receiveCompat(
+                receive(
                     // Send
                     (string message) {
                         logger.tracef("Watcher(%s): Sending message: %s", thisTask, message);
@@ -370,7 +370,7 @@ shared class ProcessMonitor {
                             logger.tracef("Watcher(%s): Starting kill timeout", thisTask);
                             killTimer = setTimer(killTimeout, {
                                 logger.warningf("Watcher(%s): Killing after kill timeout", thisTask);
-                                thisTask.prioritySendCompat(SIGKILL);
+                                thisTask.send(SIGKILL);
                             });
                         }
                     },

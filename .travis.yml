@@ -7,13 +7,14 @@ d:
 addons:
   apt:
     packages:
-    - libevent-dev
     - python3
-    - python3-pip
 
 install:
   - dub fetch doveralls
-  - dub fetch trial --version=0.6.1
+  - dub fetch trial --version=0.6.2
 
 script:
   - dub run trial:runner -- :tests
+
+after_failure:
+  - cat tests.log

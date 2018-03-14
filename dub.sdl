@@ -6,7 +6,7 @@ license "MIT"
 
 targetPath "build"
 
-dependency "vibe-d:core" version="~>0.8.2"
+dependency "vibe-core" version="~>1.4.0"
 
 # Purpousfully exclude this sub-package from supervised'd dependencies
 subPackage {
@@ -19,9 +19,8 @@ subPackage {
     workingDirectory "." # Otherwise dub runs tests in tests directory
 
     dependency "supervised" path="." version="*"
-    subConfiguration "supervised" "debug"
 
-    dependency "trial:lifecycle" version="~>0.6.1"
+    dependency "trial:lifecycle" version="~>0.6.2"
     dependency "fluent-asserts" version="~>0.9.0"
 
     buildOptions "debugInfo" "alwaysStackFrame"
@@ -29,8 +28,4 @@ subPackage {
 
 # Library
 configuration "library" {
-}
-
-configuration "debug" {
-    debugVersions "supervised_debug"
 }

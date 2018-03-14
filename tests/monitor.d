@@ -8,6 +8,7 @@ import std.range;
 import std.format;
 import std.typecons;
 import std.algorithm;
+import std.experimental.logger;
 
 import fluent.asserts;
 import trial.discovery.spec;
@@ -16,10 +17,17 @@ import supervised.monitor;
 
 private alias suite = Spec!({
 describe("ProcessMonitor", {
+    before({
+        import supervised.logging;
+
+        writeln("Writing test logs to `tests.log`");
+        supervised.logging.logger = new FileLogger("tests.log", LogLevel.trace);
+    });
+
     it("handles multiple consecutive single short run processes", {
         auto monitor = new shared ProcessMonitor;
 
-        foreach (i; 0..200) {
+        foreach (i; 0..100) {
             monitor.running.should.equal(false).because("(At iteration %s)".format(i));
 
             auto count = 0;
@@ -32,8 +40,6 @@ describe("ProcessMonitor", {
             monitor.start(["echo", "foo bar"]);
             monitor.running.should.equal(true).because("(At iteration %s)".format(i));
             monitor.wait().should.equal(0).because("(At iteration %s)".format(i));
-
-            auto large = new int[10000];
 
             count.should.equal(1).because("(At iteration %s)".format(i));
             others.should.equal(0).because("(At iteration %s)".format(i));

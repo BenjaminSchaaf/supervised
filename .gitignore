@@ -16,3 +16,6 @@ dub.selections.json
 .trial/
 trial-*
 trial_*
+
+# Tests
+tests.log
