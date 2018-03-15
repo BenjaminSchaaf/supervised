@@ -17,14 +17,13 @@ import vibe.core.sync;
 import vibe.core.task;
 import vibe.core.concurrency;
 
+import supervised.errors;
 import supervised.logging;
 
 private enum CloseStdin { init };
 private enum ProcessTerminated { init };
 
-shared class ProcessMonitor {
-    @safe:
-
+@safe shared class ProcessMonitor {
     alias FileCallback = void delegate(string) @safe;
     alias EventCallback = void delegate() @safe;
 
@@ -52,15 +51,6 @@ shared class ProcessMonitor {
     this(immutable(string[]) args, immutable(Tuple!(string, string)[]) env = null, string workingDir = null) shared {
         this();
         start(args, env, workingDir);
-    }
-
-    ~this() shared @trusted {
-        auto running = _running;
-        Task watcher = _watcher;
-        if (!running || !watcher) return;
-
-        logger.tracef("Killing process with SIGKILL due to monitor %s deallocation", watcher);
-        watcher.send(SIGKILL);
     }
 
     private struct Sync {
@@ -127,14 +117,14 @@ shared class ProcessMonitor {
         }
 
         void send(string message) @trusted {
-            enforce(running);
+            enforce!InvalidStateException(running, "Process is not running, cannot send message.");
 
             logger.tracef("Sending stdin message: %s", message);
             watcher.send(message);
         }
     }
 
-    auto withLock(T)(T delegate(Sync) @safe fn) shared @trusted {
+    private auto withLock(T)(T delegate(Sync) @safe fn) shared @trusted {
         logger.trace("Locking mutex");
         scope(exit) logger.trace("Unlocked mutex");
 
@@ -153,7 +143,7 @@ shared class ProcessMonitor {
         return withLock((self) @safe => self.killTimeout);
     }
 
-    @property void killTimeout(Duration duration) shared {
+    @property void killTimeout(in Duration duration) shared {
         withLock((self) @safe => self.killTimeout = duration);
     }
 
@@ -161,19 +151,19 @@ shared class ProcessMonitor {
         return withLock((self) @safe => self.pid);
     }
 
-    @property void stdoutCallback(FileCallback fn) {
+    @property void stdoutCallback(in FileCallback fn) {
         withLock((self) @safe => self.stdoutCallback = fn);
     }
 
-    @property void stderrCallback(FileCallback fn) {
+    @property void stderrCallback(in FileCallback fn) {
         withLock((self) @safe => self.stderrCallback = fn);
     }
 
-    @property void terminateCallback(EventCallback fn) {
+    @property void terminateCallback(in EventCallback fn) {
         withLock((self) @safe => self.terminateCallback = fn);
     }
 
-    void callStdoutCallback(string message) shared @trusted {
+    private void callStdoutCallback(in string message) shared @trusted {
         auto callback = _stdoutCallback;
 
         if (callback !is null) {
@@ -185,7 +175,7 @@ shared class ProcessMonitor {
         }
     }
 
-    void callStderrCallback(string message) shared @trusted {
+    private void callStderrCallback(in string message) shared @trusted {
         auto callback = _stderrCallback;
 
         if (callback !is null) {
@@ -197,7 +187,7 @@ shared class ProcessMonitor {
         }
     }
 
-    void callTerminateCallback() shared @trusted {
+    private void callTerminateCallback() shared @trusted {
         auto callback = _terminateCallback;
 
         if (callback !is null) {
@@ -215,6 +205,8 @@ shared class ProcessMonitor {
 
     void closeStdin() shared {
         withLock((self) @trusted {
+            enforce!InvalidStateException(self.running, "Process it not running, cannot close stdin.");
+
             logger.tracef("Sending closeStdin message");
             self.watcher.send(CloseStdin.init);
         });
@@ -222,7 +214,7 @@ shared class ProcessMonitor {
 
     void start(immutable(string[]) args, immutable(Tuple!(string, string)[]) env = null, string workingDir = null) shared {
         withLock((self) @trusted {
-            enforce(!self.running);
+            enforce!InvalidStateException(!self.running, "Process is already running, cannot start it.");
 
             static void fn(shared ProcessMonitor monitor, Tid sender, immutable(string[]) args, immutable(Tuple!(string, string)[]) _env, string workingDir) {
                 // Create the env associative array
@@ -237,21 +229,27 @@ shared class ProcessMonitor {
                     logger.criticalf("Critical Error in watcher: %s", e);
                 }
             }
-            runWorkerTask(&fn, this, thisTid, args.idup, env.idup, workingDir);
-
-            auto received = receiveOnly!(Task, shared Pid);
-            self.watcher = received[0];
-            self.pid = cast(Pid)received[1];
-
-            logger.tracef("Process started, monitor: %s", self.watcher);
 
             self.running = true;
+            runWorkerTask(&fn, this, thisTid, args.idup, env.idup, workingDir);
+
+            receive(
+                (Task watcher, shared Pid pid) {
+                    self.watcher = watcher;
+                    self.pid = cast(Pid)pid;
+                },
+                (shared Throwable error) {
+                    throw cast(Throwable)error;
+                },
+            );
+
+            logger.tracef("Process started, monitor: %s", self.watcher);
         });
     }
 
     void kill(int signal = SIGTERM) shared {
         withLock((self) @trusted {
-            enforce(self.running);
+            enforce!InvalidStateException(self.running, "Process is not running, cannot kill it");
 
             logger.tracef("Killing process with signal %s, monitor: %s", signal, self.watcher);
             self.watcher.send(signal);
@@ -279,7 +277,16 @@ shared class ProcessMonitor {
 
         // Start the process
         auto config = Config.newEnv;
-        auto processPipes = pipeProcess(args, Redirect.all, env, config, workingDir);
+
+        ProcessPipes processPipes;
+        try {
+            processPipes = pipeProcess(args, Redirect.all, env, config, workingDir);
+        } catch (ProcessException exception) {
+            logger.tracef("Watcher(%s): Exception starting process: %s", thisTask, exception);
+            starter.send(cast(shared Throwable)exception);
+            return;
+        }
+
         auto process = processPipes.pid;
         auto stdin = processPipes.stdin;
         auto stdout = processPipes.stdout;
@@ -359,7 +366,7 @@ shared class ProcessMonitor {
                     },
                     // Kill
                     (int signal) {
-                        if (process.tryWait().terminated) return;
+                        //if (process.tryWait().terminated) return;
 
                         logger.tracef("Watcher(%s): Sending kill signal %s", thisTask, signal);
                         process.kill(signal);

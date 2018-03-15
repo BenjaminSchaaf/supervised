@@ -3,6 +3,7 @@ module tests.api.v1;
 import core.time;
 import core.thread;
 
+import std.path;
 import std.stdio;
 import std.range;
 import std.format;
@@ -13,7 +14,7 @@ import std.experimental.logger;
 import fluent.asserts;
 import trial.discovery.spec;
 
-import supervised.monitor;
+import supervised;
 
 private alias suite = Spec!({
 describe("ProcessMonitor", {
@@ -170,12 +171,6 @@ describe("ProcessMonitor", {
         outputs.should.equal(["foo", "INTERRUPTED"]);
     });
 
-    //it("handles running a non-existant process", {
-    //    auto monitor = new shared ProcessMonitor;
-
-    //    monitor.start(["tests/supports/this-file-does-not-exist"]);
-    //});
-
     // TODO: Support this feature
     /*it("handles processes that write directly to tty", {
         auto monitor = new shared ProcessMonitor;
@@ -206,30 +201,6 @@ describe("ProcessMonitor", {
         });
     });
 
-    describe("~this()", {
-        it("Cleans up when a process isn't running", {
-            auto monitor = new shared ProcessMonitor;
-
-            // TODO: Force dealloc here, without screwing up vibe.d
-        });
-
-        // TODO: Re-enable once forcing dealloc works
-        /*it("Stops a running process as cleanup", {
-            auto monitor = new shared ProcessMonitor;
-
-            string[] outputs;
-            monitor.stdoutCallback = (string message) @safe {
-                outputs ~= message;
-            };
-
-            monitor.start(["python3", "tests/support/print_on_exit.py"]);
-
-            // TODO: Force dealloc here, without screwing up vibe.d
-
-            outputs.should.equal(["TERMINATED"]);
-        });*/
-    });
-
     describe("start()", {
         it("Starts process with proper environment", {
             auto monitor = new shared ProcessMonitor;
@@ -249,7 +220,15 @@ describe("ProcessMonitor", {
             outputs.length.should.equal(3);
             outputs[0].should.equal("['print_env.py']");
             outputs[1].canFind("'foo': 'bar'").should.equal(true);
-            //outputs[2].should.equal("tests/support"); // TODO: Fix the script
+            outputs[2].should.equal(absolutePath("tests/support"));
+        });
+
+        it("Fails running a non-existent process", {
+            auto monitor = new shared ProcessMonitor;
+
+            ({
+                monitor.start(["tests/supports/this-file-does-not-exist"]);
+            }).should.throwException!ProcessException;
         });
 
         it("Fails if a process is already running", {
@@ -262,8 +241,48 @@ describe("ProcessMonitor", {
 
             ({
                 monitor.start(["echo", "foo"]);
-            }).should.throwSomething;
+            }).should.throwException!InvalidStateException;
 
+        });
+    });
+
+    describe("kill()", {
+        it("Fails if process is not running", {
+            auto monitor = new shared ProcessMonitor;
+
+            ({
+                monitor.kill(4);
+            }).should.throwException!InvalidStateException;
+        });
+    });
+
+    describe("wait()", {
+        it("Returns the exit code", {
+            auto monitor = new shared ProcessMonitor(["python3", "tests/support/exit_code.py", "2"]);
+
+            monitor.wait().should.equal(2);
+            monitor.wait().should.equal(2);
+
+            monitor.start(["python3", "tests/support/exit_code.py", "0"]);
+
+            monitor.wait().should.equal(0);
+            monitor.wait().should.equal(0);
+        });
+
+        it("Handles being called without the process having started", {
+            auto monitor = new shared ProcessMonitor;
+
+            monitor.wait().should.equal(0);
+        });
+    });
+
+    describe("closeStdin()", {
+        it("Fails if process is not running", {
+            auto monitor = new shared ProcessMonitor;
+
+            ({
+                monitor.closeStdin();
+            }).should.throwException!InvalidStateException;
         });
     });
 });
