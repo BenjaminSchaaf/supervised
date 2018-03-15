@@ -1,3 +1,4 @@
+///
 module supervised.logging;
 
 import std.stdio;
@@ -15,10 +16,12 @@ shared static this() {
     _logger = new FileLogger(stdout, loglevel);
 }
 
+///
 @property Logger logger() @trusted {
     return _logger;
 }
 
+///
 @property void logger(Logger logger) @trusted {
     synchronized {
         _logger = logger;

@@ -1,4 +1,7 @@
+/**
+ * Publicly imports `supervised.monitor`.
+ */
 module supervised;
 
-public import supervised.errors;
+///
 public import supervised.monitor;

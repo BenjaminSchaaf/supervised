@@ -11,6 +11,7 @@ __test__*__
 build/
 coverage/
 dub.selections.json
+docs/
 
 # Trial
 .trial/

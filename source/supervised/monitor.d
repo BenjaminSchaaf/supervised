@@ -1,3 +1,27 @@
+/**
+ * Implements `ProcessMonitor`.
+ *
+ * Publicly imports `ProcessException` from `std.process`.
+ *
+ * Examples:
+ * ---
+ * auto monitor = new shared ProcessMonitor;
+ * monitor.stdoutCallback = (string line) {
+ *     writeln(line);
+ * }
+ * monitor.terminateCallback = () {
+ *     writeln("terminated");
+ * }
+ *
+ * monitor.start(["cat"]);
+ *
+ * monitor.send("foo");
+ * monitor.send("bar");
+ * monitor.closeStdin();
+ *
+ * assert(monitor.wait() == 0);
+ * ---
+ */
 module supervised.monitor;
 
 import core.time;
@@ -17,14 +41,36 @@ import vibe.core.sync;
 import vibe.core.task;
 import vibe.core.concurrency;
 
-import supervised.errors;
 import supervised.logging;
+
+///
+public import std.process : ProcessException;
+
+/// Exception thrown when a method is called on a `ProcessMonitor` during invalid state.
+class InvalidStateException : Exception {
+    ///
+    this(string msg, string file = __FILE__, ulong line = cast(ulong)__LINE__, Throwable nextInChain = null) pure nothrow @nogc @safe {
+        super(msg, file, line, nextInChain);
+    }
+}
 
 private enum CloseStdin { init };
 private enum ProcessTerminated { init };
 
-@safe shared class ProcessMonitor {
+/**
+ * Spawns and monitors sub-processes.
+ *
+ * Monitoring processes in a safe way is expensive. This implementation requires
+ * spawning 3 threads per process. Use this sparingly.
+ *
+ * This class is entirely thread and fibre safe. Methods that block only block
+ * on the fibre (not the thread), and locks are used to prevent data-races.
+ */
+@safe shared final class ProcessMonitor {
+    /// Callback for stdout and stderr events
     alias FileCallback = void delegate(string);
+
+    /// Callack for termination
     alias EventCallback = void delegate();
 
     private {
@@ -33,7 +79,8 @@ private enum ProcessTerminated { init };
 
         Task _watcher;
         bool _running = false;
-        TaskMutex _runningMutex; // Mutex that is locked while the process is running. Used for wait()
+        // Mutex that is locked while the process is running. Used for wait()
+        TaskMutex _runningMutex;
         int _exitStatus;
 
         Duration _killTimeout = 20.seconds;
@@ -44,11 +91,20 @@ private enum ProcessTerminated { init };
         EventCallback _terminateCallback;
     }
 
+    /**
+     * Creates a new `ProcessMonitor`.
+     *
+     * Can also create a new process monitor and immediately start it.
+     * Behaviour is the same as `start`.
+     */
     this() shared @trusted {
         this._mutex = cast(shared)new TaskMutex();
     }
 
-    this(immutable(string[]) args, immutable(Tuple!(string, string)[]) env = null, string workingDir = null) shared {
+    /// Ditto
+    this(immutable string[] args,
+         immutable Tuple!(string, string)[] env = null,
+         immutable string workingDir = null) shared {
         this();
         start(args, env, workingDir);
     }
@@ -135,32 +191,64 @@ private enum ProcessTerminated { init };
         }
     }
 
+    /**
+     * Returns whether or not the monitored process is currently running.
+     */
     @property bool running() shared {
-        return withLock((self) => self.running);
+        return withLock(self => self.running);
     }
 
+    /**
+     * The time to wait before the process is force-killed by the monitor after
+     * being asked to stop. Defaults to 20 seconds.
+     *
+     * When a process is killed using `kill` it may not stop immediately (or at
+     * all). With this you can define an amount of time the monitor should wait
+     * before forcing the process to stop.
+     */
     @property Duration killTimeout() shared {
-        return withLock((self) => self.killTimeout);
+        return withLock(self => self.killTimeout);
     }
 
+    /// Ditto
     @property void killTimeout(in Duration duration) shared {
-        withLock((self) => self.killTimeout = duration);
+        withLock(self => self.killTimeout = duration);
     }
 
+    /// Returns the pid of the running process, or the last process run.
+    /// Otherwise returns `Pid.init`.
     @property Pid pid() shared {
-        return withLock((self) => self.pid);
+        return withLock(self => self.pid);
     }
 
+
+    /**
+     * Sets the callback for when a line from the monitored process's stdout is
+     * read.
+     *
+     * Callbacks are called from native threads, not vibed fibres.
+     */
     @property void stdoutCallback(in FileCallback fn) {
-        withLock((self) => self.stdoutCallback = fn);
+        withLock(self => self.stdoutCallback = fn);
     }
 
+    /**
+     * Sets the callback for when a line from the monitored process's stderr is
+     * read.
+     *
+     * Callbacks are called from native threads, not vibed fibres.
+     */
     @property void stderrCallback(in FileCallback fn) {
-        withLock((self) => self.stderrCallback = fn);
+        withLock(self => self.stderrCallback = fn);
     }
 
+    /**
+     * Sets the callback for when the monitored process exits.
+     *
+     * Callbacks are called from native threads, not vibed fibres.
+     */
     @property void terminateCallback(in EventCallback fn) {
-        withLock((self) => self.terminateCallback = fn);
+        withLock(self => self.terminateCallback = fn);
     }
 
     private void callStdoutCallback(in string message) shared @trusted {
@@ -199,10 +287,20 @@ private enum ProcessTerminated { init };
         }
     }
 
+    /**
+     * Sends a line of input to the monitored process's stdin.
+     *
+     * Throws: `InvalidStateException` when the process is not running.
+     */
     void send(string message) shared {
-        withLock((self) => self.send(message));
+        withLock(self => self.send(message));
     }
 
+    /**
+     * Closes the monitor's end of stdin for the process.
+     *
+     * Throws: `InvalidStateException` when the process is not running.
+     */
     void closeStdin() shared {
         withLock((self) @trusted {
             enforce!InvalidStateException(self.running, "Process it not running, cannot close stdin.");
@@ -212,6 +310,17 @@ private enum ProcessTerminated { init };
         });
     }
 
+    /**
+     * Start a monitored process given the arguments (`args`), environment
+     * (`env`) and working directory (`workingDir`).
+     *
+     * Blocks on the fibre until the process starts.
+     *
+     * Throws:
+     *   `InvalidStateException` when a process is already running.
+     *
+     *   `std.process.ProcessException` if an exception is encountered when starting the process.
+     */
     void start(immutable string[] args, immutable Tuple!(string, string)[] env = null, immutable string workingDir = null) shared {
         withLock((self) @trusted {
             enforce!InvalidStateException(!self.running, "Process is already running, cannot start it.");
@@ -230,9 +339,9 @@ private enum ProcessTerminated { init };
                 }
             }
 
-            self.running = true;
             runWorkerTask(&fn, this, thisTid, args.idup, env.idup, workingDir.idup);
 
+            // Wait for either an exception or a successful start
             receive(
                 (Task watcher, shared Pid pid) {
                     self.watcher = watcher;
@@ -244,9 +353,17 @@ private enum ProcessTerminated { init };
             );
 
             logger.tracef("Process started, monitor: %s", self.watcher);
+            self.running = true;
         });
     }
 
+    /**
+     * Sends a signal to the process.
+     *
+     * If the process does not die within the `killTimeout`, `SIGKILL` is sent.
+     *
+     * Throws: InvalidStateException if the process is not running.
+     */
     void kill(int signal = SIGTERM) shared {
         withLock((self) @trusted {
             enforce!InvalidStateException(self.running, "Process is not running, cannot kill it");
@@ -256,8 +373,16 @@ private enum ProcessTerminated { init };
         });
     }
 
+    /**
+     * Block on the current fibre until the process has exited.
+     *
+     * Returns the exit code of the process, regardless of whether it had to
+     * wait or not.
+     *
+     * When called before any process starts, it returns `int.init`.
+     */
     int wait() shared {
-        auto pair = withLock((self) => tuple(self.runningMutex, self.exitStatus));
+        auto pair = withLock(self => tuple(self.runningMutex, self.exitStatus));
         auto runningMutex = pair[0];
 
         if (runningMutex is null) {
@@ -268,7 +393,7 @@ private enum ProcessTerminated { init };
         logger.trace("Waiting on process to finish");
         synchronized(runningMutex) {}
 
-        return withLock((self) => self.exitStatus);
+        return withLock(self => self.exitStatus);
     }
 
     private void runWatcher(Tid starter, in string[] args, in string[string] env, in string workingDir) shared @trusted {
@@ -298,7 +423,7 @@ private enum ProcessTerminated { init };
         runningMutex.lock(); // We have to lock in this task, or we get an error!
         _runningMutex = cast(shared)runningMutex;
 
-        // Fetch some attributes, remember we're still locked (ie. kill timeout)
+        // Fetch some attributes, remember we're still locked
         immutable killTimeout = _killTimeout;
 
         // Notify the task that started the watcher that the watcher has started
