@@ -24,8 +24,8 @@ private enum CloseStdin { init };
 private enum ProcessTerminated { init };
 
 @safe shared class ProcessMonitor {
-    alias FileCallback = void delegate(string) @safe;
-    alias EventCallback = void delegate() @safe;
+    alias FileCallback = void delegate(string);
+    alias EventCallback = void delegate();
 
     private {
         // Monitor mutex
@@ -124,7 +124,7 @@ private enum ProcessTerminated { init };
         }
     }
 
-    private auto withLock(T)(T delegate(Sync) @safe fn) shared @trusted {
+    private auto withLock(T)(T delegate(Sync) fn) shared @trusted {
         logger.trace("Locking mutex");
         scope(exit) logger.trace("Unlocked mutex");
 
@@ -136,31 +136,31 @@ private enum ProcessTerminated { init };
     }
 
     @property bool running() shared {
-        return withLock((self) @safe => self.running);
+        return withLock((self) => self.running);
     }
 
     @property Duration killTimeout() shared {
-        return withLock((self) @safe => self.killTimeout);
+        return withLock((self) => self.killTimeout);
     }
 
     @property void killTimeout(in Duration duration) shared {
-        withLock((self) @safe => self.killTimeout = duration);
+        withLock((self) => self.killTimeout = duration);
     }
 
     @property Pid pid() shared {
-        return withLock((self) @safe => self.pid);
+        return withLock((self) => self.pid);
     }
 
     @property void stdoutCallback(in FileCallback fn) {
-        withLock((self) @safe => self.stdoutCallback = fn);
+        withLock((self) => self.stdoutCallback = fn);
     }
 
     @property void stderrCallback(in FileCallback fn) {
-        withLock((self) @safe => self.stderrCallback = fn);
+        withLock((self) => self.stderrCallback = fn);
     }
 
     @property void terminateCallback(in EventCallback fn) {
-        withLock((self) @safe => self.terminateCallback = fn);
+        withLock((self) => self.terminateCallback = fn);
     }
 
     private void callStdoutCallback(in string message) shared @trusted {
@@ -200,7 +200,7 @@ private enum ProcessTerminated { init };
     }
 
     void send(string message) shared {
-        withLock((self) @safe => self.send(message));
+        withLock((self) => self.send(message));
     }
 
     void closeStdin() shared {
@@ -212,11 +212,11 @@ private enum ProcessTerminated { init };
         });
     }
 
-    void start(immutable(string[]) args, immutable(Tuple!(string, string)[]) env = null, string workingDir = null) shared {
+    void start(immutable string[] args, immutable Tuple!(string, string)[] env = null, immutable string workingDir = null) shared {
         withLock((self) @trusted {
             enforce!InvalidStateException(!self.running, "Process is already running, cannot start it.");
 
-            static void fn(shared ProcessMonitor monitor, Tid sender, immutable(string[]) args, immutable(Tuple!(string, string)[]) _env, string workingDir) {
+            static void fn(shared ProcessMonitor monitor, Tid sender, immutable string[] args, immutable Tuple!(string, string)[] _env, immutable string workingDir) {
                 // Create the env associative array
                 string[string] env;
                 foreach (item; _env) {
@@ -231,7 +231,7 @@ private enum ProcessTerminated { init };
             }
 
             self.running = true;
-            runWorkerTask(&fn, this, thisTid, args.idup, env.idup, workingDir);
+            runWorkerTask(&fn, this, thisTid, args.idup, env.idup, workingDir.idup);
 
             receive(
                 (Task watcher, shared Pid pid) {
@@ -257,7 +257,7 @@ private enum ProcessTerminated { init };
     }
 
     int wait() shared {
-        auto pair = withLock((self) @safe => tuple(self.runningMutex, self.exitStatus));
+        auto pair = withLock((self) => tuple(self.runningMutex, self.exitStatus));
         auto runningMutex = pair[0];
 
         if (runningMutex is null) {
@@ -268,15 +268,15 @@ private enum ProcessTerminated { init };
         logger.trace("Waiting on process to finish");
         synchronized(runningMutex) {}
 
-        return withLock((self) @safe => self.exitStatus);
+        return withLock((self) => self.exitStatus);
     }
 
-    private void runWatcher(Tid starter, immutable string[] args, string[string] env, string workingDir) shared @trusted {
+    private void runWatcher(Tid starter, in string[] args, in string[string] env, in string workingDir) shared @trusted {
         auto thisTask = Task.getThis();
         logger.infof("Watcher(%s): started with %s", thisTask, args);
 
         // Start the process
-        auto config = Config.newEnv;
+        immutable config = Config.newEnv;
 
         ProcessPipes processPipes;
         try {
@@ -291,15 +291,15 @@ private enum ProcessTerminated { init };
         auto stdin = processPipes.stdin;
         auto stdout = processPipes.stdout;
         auto stderr = processPipes.stderr;
-        logger.tracef("Watcher(%s): [stdin: %s, stdout: %s, stderr: %s]", thisTask, stdin.fileno, stdout.fileno, stderr.fileno);
+        logger.tracef("Watcher(%s): [pid: %s, stdin: %s, stdout: %s, stderr: %s]", thisTask, process, stdin.fileno, stdout.fileno, stderr.fileno);
 
         // The monitor is locked by our starter, lets sneek in some state
         auto runningMutex = new TaskMutex;
         runningMutex.lock(); // We have to lock in this task, or we get an error!
         _runningMutex = cast(shared)runningMutex;
 
-        // TODO: Fetch some attributes, remember we're still locked (ie. kill timeout)
-        auto killTimeout = cast(immutable)_killTimeout;
+        // Fetch some attributes, remember we're still locked (ie. kill timeout)
+        immutable killTimeout = _killTimeout;
 
         // Notify the task that started the watcher that the watcher has started
         logger.tracef("Watcher(%s): Notifying starter that process has started", thisTask);

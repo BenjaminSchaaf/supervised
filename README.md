@@ -7,7 +7,7 @@
 Here's a very incomplete example.
 
 ```d
-auto processMonitor = new ProcessMonitor;
+auto processMonitor = new shared ProcessMonitor;
 processMonitor.stdoutCallback = (string message) @safe {
     writeln(message);
 };
