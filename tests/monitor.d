@@ -285,5 +285,33 @@ describe("ProcessMonitor", {
             }).should.throwException!InvalidStateException;
         });
     });
+
+    describe("callbacks", {
+        it("Calls all callbacks", {
+            auto monitor = new shared ProcessMonitor;
+
+            string[] stdout;
+            monitor.stdoutCallback = (string message) @safe {
+                stdout ~= message;
+            };
+
+            string[] stderr;
+            monitor.stderrCallback = (string message) @safe {
+                stderr ~= message;
+            };
+
+            auto terminations = 0;
+            monitor.terminateCallback = () @safe {
+                terminations += 1;
+            };
+
+            monitor.start(["bash", "-c", "echo foo >&2; echo bar"]);
+            monitor.wait().should.equal(0);
+
+            stdout.should.equal(["bar"]);
+            stderr.should.equal(["foo"]);
+            terminations.should.equal(1);
+        });
+    });
 });
 });

@@ -35,6 +35,7 @@ import std.process;
 import std.typecons;
 import std.algorithm;
 import std.exception;
+static import std.process;
 
 import vibe.core.core;
 import vibe.core.sync;
@@ -43,8 +44,8 @@ import vibe.core.concurrency;
 
 import supervised.logging;
 
-///
-public import std.process : ProcessException;
+/// Exception thrown by `spawnProcess` when `ProcessMonitor.start` is called
+alias ProcessException = std.process.ProcessException;
 
 /// Exception thrown when a method is called on a `ProcessMonitor` during invalid state.
 class InvalidStateException : Exception {
@@ -53,9 +54,6 @@ class InvalidStateException : Exception {
         super(msg, file, line, nextInChain);
     }
 }
-
-private enum CloseStdin { init };
-private enum ProcessTerminated { init };
 
 /**
  * Spawns and monitors sub-processes.
@@ -72,6 +70,10 @@ private enum ProcessTerminated { init };
 
     /// Callack for termination
     alias EventCallback = void delegate();
+
+    // Events
+    private enum CloseStdin { init };
+    private enum ProcessTerminated { init };
 
     private {
         // Monitor mutex
@@ -220,7 +222,6 @@ private enum ProcessTerminated { init };
     @property Pid pid() shared {
         return withLock(self => self.pid);
     }
-
 
     /**
      * Sets the callback for when a line from the monitored process's stdout is
