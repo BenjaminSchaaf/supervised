@@ -1,4 +1,4 @@
-module tests.api.v1;
+module tests.monitor;
 
 import core.time;
 import core.thread;
