@@ -171,6 +171,23 @@ describe("ProcessMonitor", {
         outputs.should.equal(["foo", "INTERRUPTED"]);
     });
 
+    it("handles different types of line endings", {
+        auto monitor = new shared ProcessMonitor;
+
+        string[] outputs;
+        monitor.stdoutCallback = (string message) @safe {
+            outputs ~= message;
+        };
+
+        monitor.start(["python3", "tests/support/line_endings.py"]);
+        monitor.running.should.equal(true);
+
+        monitor.wait();
+
+        monitor.running.should.equal(false);
+        outputs.should.equal(["linux", "osx", "shit"]);
+    });
+
     // TODO: Support this feature
     /*it("handles processes that write directly to tty", {
         auto monitor = new shared ProcessMonitor;

@@ -55,6 +55,14 @@ class InvalidStateException : Exception {
     }
 }
 
+/// Sanitizes an output line
+private string sanitizeLine(string line) {
+    if (line[$ - 1] == '\r') {
+        return line[0..$ - 1];
+    }
+    return line;
+}
+
 /**
  * Spawns and monitors sub-processes.
  *
@@ -445,6 +453,7 @@ class InvalidStateException : Exception {
         auto stdoutThread = new Thread({
             readBarrier.wait();
             foreach (line; stdout.byLineCopy()) {
+                line = line.sanitizeLine;
                 logger.tracef("Watcher(%s) STDOUT >> %s", thisTask, line);
                 callStdoutCallback(line);
             }
@@ -455,6 +464,7 @@ class InvalidStateException : Exception {
         auto stderrThread = new Thread({
             readBarrier.wait();
             foreach (line; stderr.byLineCopy()) {
+                line = line.sanitizeLine;
                 logger.tracef("Watcher(%s) STDERR >> %s", thisTask, line);
                 callStderrCallback(line);
             }
