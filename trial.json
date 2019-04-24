@@ -8,6 +8,5 @@
 	"testDiscovery": [
 		"trial.discovery.spec.SpecTestDiscovery"
 	],
-	"runInParallel": false,
 	"maxThreads": 1
 }

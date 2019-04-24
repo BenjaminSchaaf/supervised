@@ -6,7 +6,7 @@ license "MIT"
 
 targetPath "build"
 
-dependency "vibe-core" version="~>1.4.0"
+dependency "vibe-core" version="~>1.4"
 
 # Purpousfully exclude this sub-package from supervised'd dependencies
 subPackage {
